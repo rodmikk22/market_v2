@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Market Auto Issuer{% endblock %}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/htmx.org@1.9.12/dist/htmx.min.js"></script>
+  <style>
+    :root {
+      --sidebar-width: 240px;
+      --brand-color: #5C6BC0;
+    }
+    body { background: #f4f6fb; }
+    #sidebar {
+      width: var(--sidebar-width);
+      min-height: 100vh;
+      background: #1e2140;
+      color: #cdd3f0;
+      position: fixed;
+      top: 0; left: 0;
+      display: flex; flex-direction: column;
+      z-index: 100;
+    }
+    #sidebar .brand {
+      padding: 1.25rem 1.25rem 1rem;
+      border-bottom: 1px solid #2d3360;
+      font-weight: 700;
+      font-size: 1.05rem;
+      color: #fff;
+      letter-spacing: .03em;
+    }
+    #sidebar .brand span { color: #7986cb; }
+    #sidebar nav { padding: 0.75rem 0.5rem; flex: 1; }
+    #sidebar nav a {
+      display: flex; align-items: center; gap: .6rem;
+      padding: .55rem 1rem;
+      border-radius: 8px;
+      color: #b0b9e8;
+      text-decoration: none;
+      font-size: .9rem;
+      margin-bottom: 2px;
+      transition: background .15s, color .15s;
+    }
+    #sidebar nav a:hover, #sidebar nav a.active {
+      background: #2d3360;
+      color: #fff;
+    }
+    #sidebar nav a i { font-size: 1rem; width: 20px; text-align: center; }
+    #sidebar .sidebar-footer {
+      padding: .75rem 1rem 1rem;
+      font-size: .78rem;
+      color: #5a6390;
+      border-top: 1px solid #2d3360;
+    }
+    #main { margin-left: var(--sidebar-width); min-height: 100vh; }
+    .topbar {
+      background: #fff;
+      border-bottom: 1px solid #e8eaf0;
+      padding: .75rem 1.75rem;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .topbar h1 { font-size: 1.15rem; font-weight: 600; margin: 0; color: #1e2140; }
+    .page-content { padding: 1.75rem; }
+    .stat-card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,.07);
+    }
+    .stat-card .value { font-size: 2rem; font-weight: 700; line-height: 1; }
+    .stat-card .label { font-size: .8rem; color: #7b8ab8; margin-top: .25rem; }
+    .table-card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.07);
+      overflow: hidden;
+    }
+    .table-card .table { margin: 0; }
+    .badge-free { background: #e8f5e9; color: #2e7d32; }
+    .badge-reserved { background: #fff3e0; color: #e65100; }
+    .badge-issued { background: #e3f2fd; color: #1565c0; }
+    .badge-sent { background: #e8f5e9; color: #2e7d32; }
+    .badge-failed { background: #ffebee; color: #c62828; }
+    .badge-pending { background: #fff9c4; color: #f57f17; }
+    .status-badge {
+      display: inline-block;
+      padding: .2em .65em;
+      border-radius: 50px;
+      font-size: .75rem;
+      font-weight: 600;
+      letter-spacing: .02em;
+    }
+    .payload-cell {
+      max-width: 220px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-family: monospace;
+      font-size: .82rem;
+      color: #3d5a80;
+    }
+    .htmx-indicator { display: none; }
+    .htmx-request .htmx-indicator { display: inline; }
+    .modal-payload pre {
+      background: #f4f6fb;
+      border-radius: 8px;
+      padding: 1rem;
+      font-size: .83rem;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    @media (max-width: 768px) {
+      #sidebar { display: none; }
+      #main { margin-left: 0; }
+    }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+<div id="sidebar">
+  <div class="brand"><i class="bi bi-shop"></i>&nbsp; <span>Market</span> AutoIssuer</div>
+  <nav>
+    <a href="/admin" class="{% if active == 'dashboard' %}active{% endif %}">
+      <i class="bi bi-speedometer2"></i> Дашборд
+    </a>
+    <a href="/admin/stock" class="{% if active == 'stock' %}active{% endif %}">
+      <i class="bi bi-box-seam"></i> Склад товаров
+    </a>
+    <a href="/admin/orders" class="{% if active == 'orders' %}active{% endif %}">
+      <i class="bi bi-bag-check"></i> Заказы
+    </a>
+    <a href="/admin/issuances" class="{% if active == 'issuances' %}active{% endif %}">
+      <i class="bi bi-send-check"></i> Выдачи
+    </a>
+    <a href="/admin/events" class="{% if active == 'events' %}active{% endif %}">
+      <i class="bi bi-activity"></i> Вебхуки
+    </a>
+  </nav>
+  <div class="sidebar-footer">v{{ version }}</div>
+</div>
+
+<div id="main">
+  <div class="topbar">
+    <h1>{% block page_title %}{% endblock %}</h1>
+    <div class="d-flex align-items-center gap-3">
+      <span class="badge bg-success" id="health-badge">●&nbsp;Online</span>
+    </div>
+  </div>
+  <div class="page-content">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for cat, msg in messages %}
+          <div class="alert alert-{{ cat }} alert-dismissible fade show mb-3" role="alert">
+            {{ msg }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </div>
+</div>
+
+<!-- Generic JSON viewer modal -->
+<div class="modal fade" id="jsonModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Подробности</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body modal-payload">
+        <pre id="jsonModalContent"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+function showJson(data) {
+  document.getElementById('jsonModalContent').textContent = JSON.stringify(data, null, 2);
+  new bootstrap.Modal(document.getElementById('jsonModal')).show();
+}
+// Auto-refresh stats every 30 sec on dashboard
+document.addEventListener('DOMContentLoaded', () => {
+  const statsEl = document.getElementById('stats-area');
+  if (statsEl) {
+    setInterval(() => htmx.trigger(statsEl, 'refresh'), 30000);
+  }
+});
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Выдачи — Market Auto Issuer{% endblock %}
+{% block page_title %}Выдачи (журнал доставки){% endblock %}
+
+{% block content %}
+<div class="filter-bar d-flex flex-wrap gap-2 align-items-end mb-3"
+     style="background:#fff;border-radius:12px;padding:1rem 1.25rem;box-shadow:0 1px 4px rgba(0,0,0,.07)">
+  <div>
+    <label class="form-label form-label-sm mb-1">Заказ</label>
+    <input id="f-order" class="form-control form-control-sm" placeholder="order id" style="width:160px">
+  </div>
+  <div>
+    <label class="form-label form-label-sm mb-1">Статус</label>
+    <select id="f-status" class="form-select form-select-sm" style="width:130px">
+      <option value="">Все</option>
+      <option value="sent">sent</option>
+      <option value="failed">failed</option>
+      <option value="pending">pending</option>
+    </select>
+  </div>
+  <button class="btn btn-secondary btn-sm" onclick="load(1)"><i class="bi bi-search"></i> Найти</button>
+  <button class="btn btn-outline-secondary btn-sm" onclick="reset()"><i class="bi bi-x"></i> Сброс</button>
+  <span class="ms-auto text-muted small" id="count"></span>
+</div>
+
+<div class="table-card">
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>ID</th>
+          <th>Заказ</th>
+          <th>Ключ товара</th>
+          <th>Payload (что получил покупатель)</th>
+          <th>Статус</th>
+          <th>Ошибка</th>
+          <th>Дата</th>
+        </tr>
+      </thead>
+      <tbody id="iss-tbody">
+        <tr><td colspan="7" class="text-center py-4 text-muted">Загрузка...</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="d-flex justify-content-between align-items-center px-3 py-2 border-top" id="iss-pager"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let page = 1;
+const BADGE = {sent:'badge-sent',failed:'badge-failed',pending:'badge-pending'};
+
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function fmtDate(d){ if(!d)return'—'; return new Date(d).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}); }
+
+async function load(p=1) {
+  page = p;
+  let url = `/api/admin/issuances?page=${p}&per_page=50`;
+  const ord = document.getElementById('f-order').value.trim();
+  const st = document.getElementById('f-status').value;
+  if (ord) url += `&order_id=${encodeURIComponent(ord)}`;
+  if (st) url += `&status=${st}`;
+
+  const res = await fetch(url);
+  const data = await res.json();
+  document.getElementById('count').textContent = `Итого: ${data.total}`;
+
+  const tbody = document.getElementById('iss-tbody');
+  if (!data.items.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-muted">Нет записей</td></tr>';
+  } else {
+    tbody.innerHTML = data.items.map(i => `
+      <tr class="${i.delivery_status==='failed'?'table-danger':''}">
+        <td class="text-muted small">${i.id}</td>
+        <td><code class="small">${i.order_id}</code></td>
+        <td class="small text-muted">${i.order_item_key}</td>
+        <td>
+          ${i.secret_payload
+            ? `<span class="payload-cell d-inline-block" title="${esc(i.secret_payload)}">${esc(i.secret_payload)}</span>
+               <button class="btn btn-link btn-sm p-0 ms-1" onclick='showJson({payload:${JSON.stringify(i.secret_payload)}})'>
+                 <i class="bi bi-eye text-secondary"></i></button>`
+            : '<span class="text-muted">—</span>'}
+        </td>
+        <td><span class="status-badge ${BADGE[i.delivery_status]||''}">${i.delivery_status}</span></td>
+        <td class="small text-danger">${i.error_text ? `<span title="${esc(i.error_text)}">${esc(i.error_text.substring(0,60))}${i.error_text.length>60?'…':''}</span>` : ''}</td>
+        <td class="small text-muted">${fmtDate(i.created_at)}</td>
+      </tr>
+    `).join('');
+  }
+
+  const pages = Math.ceil(data.total / data.per_page);
+  let ph = `<span class="small text-muted">Стр. ${p} из ${pages||1}</span>`;
+  if (pages > 1) {
+    ph += `<div class="btn-group btn-group-sm ms-auto">
+      <button class="btn btn-outline-secondary" onclick="load(${p-1})" ${p<=1?'disabled':''}>‹</button>
+      <button class="btn btn-outline-secondary" onclick="load(${p+1})" ${p>=pages?'disabled':''}>›</button>
+    </div>`;
+  }
+  document.getElementById('iss-pager').innerHTML = ph;
+}
+
+function reset() {
+  document.getElementById('f-order').value = '';
+  document.getElementById('f-status').value = '';
+  load(1);
+}
+
+document.addEventListener('DOMContentLoaded', () => load(1));
+</script>
+{% endblock %}

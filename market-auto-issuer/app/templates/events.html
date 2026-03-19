@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Вебхуки — Market Auto Issuer{% endblock %}
+{% block page_title %}Входящие вебхуки{% endblock %}
+
+{% block content %}
+<div class="table-card">
+  <div class="d-flex align-items-center justify-content-between px-4 py-3 border-bottom">
+    <span class="small text-muted" id="ev-count"></span>
+    <button class="btn btn-sm btn-outline-secondary" onclick="loadEvents(1)">
+      <i class="bi bi-arrow-clockwise"></i> Обновить
+    </button>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>ID</th>
+          <th>Тип</th>
+          <th>Заказ</th>
+          <th>Получен</th>
+          <th>Payload</th>
+        </tr>
+      </thead>
+      <tbody id="ev-tbody">
+        <tr><td colspan="5" class="text-center py-4 text-muted">Загрузка...</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="d-flex justify-content-between align-items-center px-3 py-2 border-top" id="ev-pager"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let page = 1;
+
+const TYPE_COLOR = {
+  PING:'bg-secondary text-white',
+  ORDER_CREATED:'badge-free',
+  ORDER_STATUS_UPDATED:'badge-reserved',
+  ORDER_CANCELLED:'badge-failed',
+  UNKNOWN:'bg-light text-dark'
+};
+
+function fmtDate(d){ if(!d)return'—'; return new Date(d).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
+
+async function loadEvents(p=1) {
+  page = p;
+  const res = await fetch(`/api/admin/events?page=${p}&per_page=50`);
+  const data = await res.json();
+  document.getElementById('ev-count').textContent = `Итого событий: ${data.total}`;
+
+  const tbody = document.getElementById('ev-tbody');
+  if (!data.items.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-muted">Нет событий</td></tr>';
+  } else {
+    tbody.innerHTML = data.items.map(e => `
+      <tr>
+        <td class="text-muted small">${e.id}</td>
+        <td><span class="status-badge ${TYPE_COLOR[e.notification_type]||'bg-light'}">${e.notification_type}</span></td>
+        <td><code class="small">${e.order_id||'—'}</code></td>
+        <td class="small text-muted">${fmtDate(e.received_at)}</td>
+        <td>
+          <button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="showJson(${JSON.stringify(e.payload)})">
+            <i class="bi bi-braces"></i> JSON
+          </button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  const pages = Math.ceil(data.total / data.per_page);
+  let ph = `<span class="small text-muted">Стр. ${p} из ${pages||1}</span>`;
+  if (pages > 1) {
+    ph += `<div class="btn-group btn-group-sm ms-auto">
+      <button class="btn btn-outline-secondary" onclick="loadEvents(${p-1})" ${p<=1?'disabled':''}>‹</button>
+      <button class="btn btn-outline-secondary" onclick="loadEvents(${p+1})" ${p>=pages?'disabled':''}>›</button>
+    </div>`;
+  }
+  document.getElementById('ev-pager').innerHTML = ph;
+}
+
+document.addEventListener('DOMContentLoaded', () => loadEvents(1));
+// Auto-refresh every 15 sec
+setInterval(() => loadEvents(page), 15000);
+</script>
+{% endblock %}

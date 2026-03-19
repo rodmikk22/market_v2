@@ -1,0 +1,86 @@
+version: "3.9"
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: market_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: marketuser
+      POSTGRES_PASSWORD: marketpass
+      POSTGRES_DB: marketdb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U marketuser -d marketdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis ───────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: market_redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ── FastAPI (API + Admin UI) ────────────────────────────────────────────────
+  api:
+    build: .
+    container_name: market_api
+    restart: unless-stopped
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://marketuser:marketpass@db:5432/marketdb
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ── RQ Worker ───────────────────────────────────────────────────────────────
+  worker:
+    build: .
+    container_name: market_worker
+    restart: unless-stopped
+    command: python worker_main.py
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://marketuser:marketpass@db:5432/marketdb
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Nginx (reverse proxy) ───────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: market_nginx
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

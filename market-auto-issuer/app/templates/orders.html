@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Заказы — Market Auto Issuer{% endblock %}
+{% block page_title %}Заказы{% endblock %}
+
+{% block content %}
+<div class="table-card">
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>ID</th>
+          <th>Заказ</th>
+          <th>Статус</th>
+          <th>Субстатус</th>
+          <th>Дата</th>
+          <th>JSON</th>
+        </tr>
+      </thead>
+      <tbody id="orders-tbody">
+        <tr><td colspan="6" class="text-center py-4 text-muted">Загрузка...</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="d-flex justify-content-between align-items-center px-3 py-2 border-top" id="orders-pager"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let page = 1;
+
+const STATUS_COLOR = {
+  PROCESSING:'badge-free', DELIVERY:'badge-reserved', PICKUP:'badge-reserved',
+  DELIVERED:'badge-issued', CANCELLED:'badge-failed', PENDING:'badge-pending'
+};
+
+function statusBadge(s) {
+  return `<span class="status-badge ${STATUS_COLOR[s]||'bg-secondary text-white'}">${s||'—'}</span>`;
+}
+
+function fmtDate(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'});
+}
+
+async function loadOrders(p=1) {
+  page = p;
+  const res = await fetch(`/api/admin/orders?page=${p}&per_page=50`);
+  const data = await res.json();
+  const tbody = document.getElementById('orders-tbody');
+
+  if (!data.items.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">Нет заказов</td></tr>';
+  } else {
+    tbody.innerHTML = data.items.map(o => `
+      <tr>
+        <td class="text-muted small">${o.id}</td>
+        <td><code>${o.order_id}</code></td>
+        <td>${statusBadge(o.status)}</td>
+        <td><span class="text-muted small">${o.substatus||'—'}</span></td>
+        <td class="small text-muted">${fmtDate(o.updated_at || o.created_at)}</td>
+        <td>
+          <button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="showJson(${JSON.stringify(o.raw_order)})">
+            <i class="bi bi-braces"></i>
+          </button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  const pages = Math.ceil(data.total / data.per_page);
+  let ph = `<span class="small text-muted">Итого: ${data.total}</span>`;
+  if (pages > 1) {
+    ph += `<div class="btn-group btn-group-sm ms-auto">
+      <button class="btn btn-outline-secondary" onclick="loadOrders(${p-1})" ${p<=1?'disabled':''}>‹</button>
+      <button class="btn btn-outline-secondary" onclick="loadOrders(${p+1})" ${p>=pages?'disabled':''}>›</button>
+    </div>`;
+  }
+  document.getElementById('orders-pager').innerHTML = ph;
+}
+
+document.addEventListener('DOMContentLoaded', () => loadOrders(1));
+</script>
+{% endblock %}

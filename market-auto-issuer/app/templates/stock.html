@@ -1,0 +1,288 @@
+{% extends "base.html" %}
+{% block title %}Склад — Market Auto Issuer{% endblock %}
+{% block page_title %}Склад товаров{% endblock %}
+
+{% block content %}
+<div class="row g-3 mb-3">
+  <!-- Add single item -->
+  <div class="col-md-5">
+    <div class="table-card p-4">
+      <h6 class="fw-bold mb-3"><i class="bi bi-plus-circle me-1"></i> Добавить товар вручную</h6>
+      <form id="add-form">
+        <div class="mb-2">
+          <label class="form-label small fw-semibold">Артикул (offerId)</label>
+          <input type="text" class="form-control form-control-sm" id="add-code" name="product_code"
+                 placeholder="MRKT-H5D87B1O" required>
+        </div>
+        <div class="mb-2">
+          <label class="form-label small fw-semibold">Секрет / ключ / аккаунт</label>
+          <textarea class="form-control form-control-sm font-monospace" id="add-payload" name="secret_payload"
+                    rows="3" placeholder="login:password или KEY-XXXX-XXXX" required></textarea>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Метка (необязательно)</label>
+          <input type="text" class="form-control form-control-sm" id="add-label" name="label"
+                 placeholder="напр. Batch 2025-03">
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm w-100" id="add-btn">
+          <i class="bi bi-plus-lg me-1"></i> Добавить
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- CSV import -->
+  <div class="col-md-7">
+    <div class="table-card p-4">
+      <h6 class="fw-bold mb-3"><i class="bi bi-file-earmark-arrow-up me-1"></i> Импорт из CSV</h6>
+      <form id="import-form" enctype="multipart/form-data">
+        <div class="mb-2">
+          <label class="form-label small fw-semibold">Артикул (offerId) для всего файла</label>
+          <input type="text" class="form-control form-control-sm" id="import-code" name="product_code"
+                 placeholder="MRKT-H5D87B1O" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">CSV-файл</label>
+          <input type="file" class="form-control form-control-sm" id="import-file" name="file"
+                 accept=".csv,.txt" required>
+          <div class="form-text mt-1">
+            Нужна колонка <code>secret_payload</code> — или просто одна запись на строку.<br>
+            Необязательно: колонка <code>label</code> для подписи.
+          </div>
+        </div>
+        <button type="submit" class="btn btn-success btn-sm w-100" id="import-btn">
+          <i class="bi bi-upload me-1"></i> Импортировать
+        </button>
+      </form>
+      <div id="import-result" class="mt-2"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Stock table -->
+<div class="table-card">
+  <div class="d-flex flex-wrap align-items-center gap-2 px-4 py-3 border-bottom">
+    <strong class="me-auto">Все позиции</strong>
+    <input type="text" class="form-control form-control-sm" style="width:200px"
+           id="filter-code" placeholder="Фильтр по артикулу">
+    <select class="form-select form-select-sm" style="width:130px" id="filter-status">
+      <option value="">Все статусы</option>
+      <option value="free">free</option>
+      <option value="reserved">reserved</option>
+      <option value="issued">issued</option>
+    </select>
+    <button class="btn btn-sm btn-primary" onclick="loadStock(1)">
+      <i class="bi bi-search"></i> Найти
+    </button>
+    <button class="btn btn-sm btn-outline-secondary" onclick="resetFilters()">
+      <i class="bi bi-x"></i>
+    </button>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th style="width:55px">#</th>
+          <th>Артикул</th>
+          <th>Секрет / ключ</th>
+          <th>Метка</th>
+          <th>Статус</th>
+          <th>Заказ</th>
+          <th>Добавлен</th>
+          <th style="width:90px"></th>
+        </tr>
+      </thead>
+      <tbody id="stock-tbody">
+        <tr><td colspan="8" class="text-center py-4 text-muted">
+          <div class="spinner-border spinner-border-sm me-2"></div>Загрузка...
+        </td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="d-flex justify-content-between align-items-center px-4 py-2 border-top" id="stock-pagination"></div>
+</div>
+
+<!-- Edit modal -->
+<div class="modal fade" id="editModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Редактировать позицию</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="edit-form">
+          <input type="hidden" id="edit-id">
+          <div class="mb-2">
+            <label class="form-label small fw-semibold">Артикул</label>
+            <input type="text" class="form-control form-control-sm" id="edit-code" name="product_code">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small fw-semibold">Секрет</label>
+            <textarea class="form-control form-control-sm font-monospace" id="edit-payload"
+                      name="secret_payload" rows="5"></textarea>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small fw-semibold">Метка</label>
+            <input type="text" class="form-control form-control-sm" id="edit-label" name="label">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small fw-semibold">Статус</label>
+            <select class="form-select form-select-sm" id="edit-status" name="status">
+              <option value="free">free</option>
+              <option value="reserved">reserved</option>
+              <option value="issued">issued</option>
+            </select>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Отмена</button>
+        <button class="btn btn-primary btn-sm" onclick="saveEdit()">
+          <i class="bi bi-check2 me-1"></i>Сохранить
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentPage = 1;
+const PER = 50;
+let editModal;
+
+const statusBadge = s => `<span class="status-badge badge-${s}">${s}</span>`;
+const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const fmtDate = s => s ? new Date(s).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+
+function loadStock(page = 1) {
+  currentPage = page;
+  const code = document.getElementById('filter-code').value.trim();
+  const status = document.getElementById('filter-status').value;
+  let url = `/api/admin/stock?page=${page}&per_page=${PER}`;
+  if (code) url += `&product_code=${encodeURIComponent(code)}`;
+  if (status) url += `&status=${encodeURIComponent(status)}`;
+
+  fetch(url).then(r => r.json()).then(data => {
+    const tbody = document.getElementById('stock-tbody');
+    if (!data.items.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center py-5 text-muted">Позиций не найдено</td></tr>';
+    } else {
+      tbody.innerHTML = data.items.map(i => `
+        <tr>
+          <td class="text-muted small">${i.id}</td>
+          <td><code class="small">${esc(i.product_code)}</code></td>
+          <td>
+            <div class="payload-cell" title="${esc(i.secret_payload)}">${esc(i.secret_payload)}</div>
+            <button class="btn btn-link btn-sm p-0 ms-1 text-secondary" title="Показать полностью"
+                    onclick='viewPayload(${JSON.stringify(i)})'>
+              <i class="bi bi-eye-fill"></i>
+            </button>
+          </td>
+          <td class="small text-muted">${esc(i.label||'—')}</td>
+          <td>${statusBadge(i.status)}</td>
+          <td class="small text-muted" style="max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            ${esc(i.issued_to_order_id || i.reserved_for_order_id || '—')}
+          </td>
+          <td class="small text-muted">${fmtDate(i.created_at)}</td>
+          <td>
+            <button class="btn btn-sm btn-outline-secondary me-1" title="Редактировать"
+                    onclick='openEdit(${JSON.stringify(i)})'>
+              <i class="bi bi-pencil"></i>
+            </button>
+            ${i.status === 'free' ? `<button class="btn btn-sm btn-outline-danger" title="Удалить"
+                    onclick="deleteItem(${i.id})">
+              <i class="bi bi-trash"></i>
+            </button>` : ''}
+          </td>
+        </tr>`).join('');
+    }
+
+    const pages = Math.ceil(data.total / PER);
+    document.getElementById('stock-pagination').innerHTML = `
+      <small class="text-muted">Всего: <strong>${data.total}</strong></small>
+      <div class="d-flex align-items-center gap-1">
+        ${page > 1 ? `<button class="btn btn-sm btn-outline-secondary" onclick="loadStock(${page-1})">‹</button>` : ''}
+        <span class="small px-2">стр. ${page} / ${pages||1}</span>
+        ${page < pages ? `<button class="btn btn-sm btn-outline-secondary" onclick="loadStock(${page+1})">›</button>` : ''}
+      </div>`;
+  });
+}
+
+function resetFilters() {
+  document.getElementById('filter-code').value = '';
+  document.getElementById('filter-status').value = '';
+  loadStock(1);
+}
+
+function viewPayload(item) {
+  document.getElementById('jsonModalContent').textContent =
+    `Артикул: ${item.product_code}\nСтатус:  ${item.status}\nМетка:   ${item.label||'—'}\nЗаказ:   ${item.issued_to_order_id||'—'}\n\n--- СЕКРЕТ ---\n${item.secret_payload}`;
+  new bootstrap.Modal(document.getElementById('jsonModal')).show();
+}
+
+document.getElementById('add-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = document.getElementById('add-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+  const r = await fetch('/api/admin/stock', {method:'POST', body: new FormData(e.target)});
+  btn.disabled = false; btn.innerHTML = '<i class="bi bi-plus-lg me-1"></i> Добавить';
+  if (r.ok) { e.target.reset(); loadStock(1); toast('Товар добавлен', 'success'); }
+  else { const err = await r.json(); toast('Ошибка: ' + JSON.stringify(err), 'danger'); }
+});
+
+document.getElementById('import-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = document.getElementById('import-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Импорт...';
+  const r = await fetch('/api/admin/stock/import', {method:'POST', body: new FormData(e.target)});
+  btn.disabled = false; btn.innerHTML = '<i class="bi bi-upload me-1"></i> Импортировать';
+  const res = await r.json();
+  const resultEl = document.getElementById('import-result');
+  if (r.ok) {
+    resultEl.innerHTML = `<div class="alert alert-success py-2 small mb-0">✓ Добавлено: <strong>${res.added}</strong>, пропущено: ${res.skipped}</div>`;
+    e.target.reset(); loadStock(1);
+  } else {
+    resultEl.innerHTML = `<div class="alert alert-danger py-2 small mb-0">${JSON.stringify(res)}</div>`;
+  }
+});
+
+function openEdit(item) {
+  document.getElementById('edit-id').value = item.id;
+  document.getElementById('edit-code').value = item.product_code;
+  document.getElementById('edit-payload').value = item.secret_payload;
+  document.getElementById('edit-label').value = item.label || '';
+  document.getElementById('edit-status').value = item.status;
+  editModal = editModal || new bootstrap.Modal(document.getElementById('editModal'));
+  editModal.show();
+}
+
+async function saveEdit() {
+  const id = document.getElementById('edit-id').value;
+  const r = await fetch(`/api/admin/stock/${id}`, {method:'PUT', body: new FormData(document.getElementById('edit-form'))});
+  if (r.ok) { editModal.hide(); loadStock(currentPage); toast('Сохранено', 'success'); }
+  else { const err = await r.json(); toast('Ошибка: ' + JSON.stringify(err), 'danger'); }
+}
+
+async function deleteItem(id) {
+  if (!confirm('Удалить эту позицию? Действие необратимо.')) return;
+  const r = await fetch(`/api/admin/stock/${id}`, {method:'DELETE'});
+  if (r.ok) { loadStock(currentPage); toast('Удалено', 'success'); }
+  else toast('Ошибка удаления', 'danger');
+}
+
+function toast(msg, type='info') {
+  const el = document.createElement('div');
+  el.className = `alert alert-${type} alert-dismissible position-fixed bottom-0 end-0 m-3 shadow`;
+  el.style.zIndex = 9999; el.style.minWidth = '240px';
+  el.innerHTML = msg + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+document.addEventListener('DOMContentLoaded', () => loadStock(1));
+</script>
+{% endblock %}

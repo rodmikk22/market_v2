@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Дашборд — Market Auto Issuer{% endblock %}
+{% block page_title %}Дашборд{% endblock %}
+
+{% block content %}
+<div id="stats-area" hx-get="/api/admin/stats" hx-trigger="load, every 30s" hx-swap="innerHTML">
+  <div class="text-center py-5 text-muted"><i class="bi bi-arrow-repeat"></i> Загрузка...</div>
+</div>
+
+<!-- Stock breakdown table will be rendered by HTMX via the stats partial -->
+
+<div class="row g-3 mt-1">
+  <div class="col-12">
+    <div class="table-card">
+      <div class="d-flex align-items-center justify-content-between px-4 py-3 border-bottom">
+        <strong>Последние выдачи</strong>
+        <a href="/admin/issuances" class="btn btn-sm btn-outline-secondary">Все &rarr;</a>
+      </div>
+      <div id="recent-issuances" hx-get="/admin/partials/recent_issuances" hx-trigger="load" hx-swap="innerHTML">
+        <div class="text-center py-4 text-muted"><i class="bi bi-arrow-repeat"></i></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Render stats partial returned as JSON from /api/admin/stats
+document.body.addEventListener('htmx:afterRequest', function(evt) {
+  if (evt.detail.pathInfo && evt.detail.pathInfo.requestPath === '/api/admin/stats') {
+    const data = JSON.parse(evt.detail.xhr.responseText);
+    renderStats(data);
+  }
+});
+
+function renderStats(d) {
+  const t = d.totals || {};
+  const statusColor = n => n === 0 ? 'text-muted' : 'text-success';
+  let stockRows = '';
+  for (const [code, counts] of Object.entries(d.stock || {})) {
+    stockRows += `<tr>
+      <td><code>${code}</code></td>
+      <td><span class="status-badge badge-free">${counts.free || 0} свободно</span></td>
+      <td><span class="status-badge badge-reserved">${counts.reserved || 0} резерв</span></td>
+      <td><span class="status-badge badge-issued">${counts.issued || 0} выдано</span></td>
+    </tr>`;
+  }
+  if (!stockRows) stockRows = '<tr><td colspan="4" class="text-muted text-center py-3">Склад пуст</td></tr>';
+
+  document.getElementById('stats-area').innerHTML = `
+    <div class="row g-3 mb-3">
+      <div class="col-6 col-md-3">
+        <div class="stat-card">
+          <div class="value text-success">${t.free ?? 0}</div>
+          <div class="label"><i class="bi bi-box-seam"></i> Свободных товаров</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="stat-card">
+          <div class="value text-warning">${t.reserved ?? 0}</div>
+          <div class="label"><i class="bi bi-hourglass-split"></i> В резерве</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="stat-card">
+          <div class="value text-primary">${t.issued ?? 0}</div>
+          <div class="label"><i class="bi bi-send-check"></i> Выдано всего</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="stat-card">
+          <div class="value ${d.issuances_failed > 0 ? 'text-danger' : 'text-muted'}">${d.issuances_failed ?? 0}</div>
+          <div class="label"><i class="bi bi-exclamation-triangle"></i> Ошибок доставки</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="table-card mb-3">
+      <div class="px-4 py-3 border-bottom"><strong>Остатки по артикулам</strong></div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light"><tr>
+            <th>Артикул (offerId)</th><th>Свободно</th><th>Резерв</th><th>Выдано</th>
+          </tr></thead>
+          <tbody>${stockRows}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+</script>
+{% endblock %}
